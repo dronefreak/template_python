@@ -7,5 +7,14 @@ setup(
     author="",
     packages=find_packages("src"),
     package_dir={"": "src"},
-    install_requires=[],
+    install_requires=[
+        "torch",
+        "torchvision",
+        "lightning",
+        "tensorboard",
+        "pandas",
+        "opencv-python",
+        "onnx",
+        "onnxruntime",
+    ],
 )

@@ -1,12 +1,16 @@
-# Base Python template
+# Pytorch template
 
 ## Installation
 
 Note: This project is supposed to be installed on Linux systems, and was only
 tested on Ubuntu 22.04 with Python 3.11.9\
-You will need a sudo user to install some system dependencies for this project.\
+You will need a sudo account to install some system dependencies for this project.\
 A Dockerfile is provided in the subfolder `docker` to build an ubuntu-based image
 for this project if needed as explained in the next section.
+
+If necessary, the exact versions of the installed Python dependencies used to develop
+this project can be found in the file `requirements_frozen.txt` (to be eventually
+examined in case of installation or reproducibility issues).
 
 ### Docker (optional)
 
@@ -46,7 +50,7 @@ Notes:
 
 Run `./install_scripts/install_system_requirements.sh` to install the system dependencies for
 this project.\
-NOTE: You need to have a sudo user for this.
+NOTE: You need to have a sudo account to run this script.
 
 ### Full installation using make
 
@@ -54,8 +58,8 @@ WARNING: This installation procedure will install pyenv for your user account.\
 You can follow the step-by-step procedure described in the next section instead if you prefer to select
 what you really want to install for this project.
 
-In the root folder of this project, run `make` to install all the dependencies required.
-Then, run `source .venv/bin/activate` to install the local Python virtual environment install in the `.venv` subfolder.
+In the root folder of this project, run `make` to install all the dependencies required.\
+Then, run `source .venv/bin/activate` to install the local Python virtual environment install in the `.venv` subfolder.\
 NOTE: This virtual environment can be deactivated by running the command `deactivate`.
 
 Eventually, run `source ~/.bashrc` to initialize pyenv in the current shell.
@@ -108,3 +112,35 @@ To install and use pre-commit hooks, run
 pre-commit install
 pre-commit install-hooks
 ```
+
+### Test the installation
+
+To test the installation of the project, run
+
+`make test`
+
+## Usage
+
+Several scripts are provided in the `apps` folder of this project:
+
+- `visualize_dataset_elements.py`: used to visualize some randomly images sampled from the dataset.\
+  It can typically be used to check the data augmentation applied on the training set.
+- `split_csv_file.py`: used to split a label csv file into training, validation and test csv files.
+- `train.py`: used to launch a training and to convert the best model on the validation set in ONNX format.
+- `convert_model_to_onnx.py`: used to convert a different Pytorch checkpoint to an ONNX model.
+- `inference.py`: used to run an inference of a model (from a Pytorch checkpoint) on the test dataset.
+- `inference_onnx.py`: used to run an inference of an ONNX model on the test dataset.
+
+All these scripts (except `split_csv_file.py`) are using Hydra (https://hydra.cc/docs/intro/) to handle CLI arguments.\
+A default .yaml config file is provided for each script in the `apps/configs` folder, and you can modify
+the parameters in these config files to run these scripts on different parameters or provide new ones
+in the command line with `python apps/SCRIPT.py parameter=<NEW_VALUE>`.
+
+### Train a new model
+
+To train a new model, use the command
+
+`python apps/train.py`
+
+Several parameters in the config file `apps/configs/train.yaml` can be modified (number of epochs, learning rate...).\
+This will create an experiment folder in the `experiments` folder with the trained model and the tensorboard logs.

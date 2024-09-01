@@ -16,6 +16,7 @@ services:
               count: all
               capabilities: [gpu]
     command: sleep infinity
+    shm_size: "2gb"
     volumes:
       - ..:/workspace/PROJECT_NAME
       - ${HOST_SSH_FOLDER}:/home/${HOST_USERNAME}/.ssh:ro

@@ -1,0 +1,24 @@
+experiment_name: visualize_dataset_elements
+
+dataset:
+  _target_: PROJECT_NAME.dataset.ImageClassificationDataset
+  annotations_file: ../tests/data/toy_dataset/labels/labels.csv
+  img_dir: ../tests/data/toy_dataset/images
+  labels: ["BELGIUM", "FRANCE"]
+  transform:
+    _target_: torchvision.transforms.v2.Compose
+    transforms:
+      - _target_: torchvision.transforms.v2.ColorJitter
+        brightness: .5
+        saturation: .5
+        contrast: .5
+        hue: .1
+      - _target_: torchvision.transforms.v2.RandomPerspective
+        p: 0.5
+        distortion_scale: 0.25
+
+number_sampled_elements: 10
+
+hydra:
+  run:
+    dir: experiments/${now:%Y-%m-%d_%H-%M-%S}_${experiment_name}

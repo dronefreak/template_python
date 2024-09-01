@@ -1,0 +1,88 @@
+experiment_name: train
+
+lightning_module:
+  _target_: PROJECT_NAME.lightning_modules.ClassificationLightningModule
+  model:
+    _target_: PROJECT_NAME.models.BaselineClassicationModel
+    input_size: 3072
+    output_dimension: 1
+  loss:
+    _target_: torch.nn.BCEWithLogitsLoss
+  metrics:
+    accuracy:
+      _target_: torchmetrics.classification.BinaryAccuracy
+      threshold: 0.
+    f1_score:
+      _target_: torchmetrics.classification.BinaryF1Score
+      threshold: 0.
+    precision:
+      _target_: torchmetrics.classification.BinaryPrecision
+      threshold: 0.
+    recall:
+      _target_: torchmetrics.classification.BinaryRecall
+      threshold: 0.
+  learning_rate: 1e-3
+
+train_dataloader:
+  _target_: torch.utils.data.DataLoader
+  batch_size: 2
+  num_workers: 1
+  shuffle: True
+  dataset:
+    _target_: PROJECT_NAME.dataset.ImageClassificationDataset
+    annotations_file: "../tests/data/toy_dataset/labels/labels_train.csv"
+    img_dir: "../tests/data/toy_dataset/images"
+    labels: ["BELGIUM", "FRANCE"]
+    transform: null
+
+val_dataloader:
+  _target_: torch.utils.data.DataLoader
+  batch_size: ${train_dataloader.batch_size}
+  num_workers: ${train_dataloader.num_workers}
+  shuffle: False
+  dataset:
+    _target_: PROJECT_NAME.dataset.ImageClassificationDataset
+    annotations_file: "../tests/data/toy_dataset/labels/labels_val.csv"
+    img_dir: ${train_dataloader.dataset.img_dir}
+    labels: ${train_dataloader.dataset.labels}
+    transform: ${train_dataloader.dataset.transform}
+
+test_dataloader:
+  _target_: torch.utils.data.DataLoader
+  batch_size: ${train_dataloader.batch_size}
+  num_workers: ${train_dataloader.num_workers}
+  shuffle: False
+  dataset:
+    _target_: PROJECT_NAME.dataset.ImageClassificationDataset
+    annotations_file: "../tests/data/toy_dataset/labels/labels_test.csv"
+    img_dir: ${train_dataloader.dataset.img_dir}
+    labels: ${train_dataloader.dataset.labels}
+    transform: ${train_dataloader.dataset.transform}
+
+trainer:
+  _target_: lightning.Trainer
+  default_root_dir: "${hydra:runtime.output_dir}"
+  max_epochs: 4
+  callbacks:
+    - _target_: lightning.pytorch.callbacks.ModelCheckpoint
+      dirpath: "${hydra:runtime.output_dir}/checkpoints"
+      monitor: "val_f1_score"
+      mode: "max"
+      save_last: True
+      filename: "best-{epoch}-{val_f1_score:.4f}"
+      every_n_epochs: 1
+      save_top_k: 1
+  logger:
+    _target_: lightning.pytorch.loggers.TensorBoardLogger
+    save_dir: "${hydra:runtime.output_dir}/tb_logs"
+    name: "Classification"
+  log_every_n_steps: 1
+  accelerator: "cpu"
+  devices: 1
+  deterministic: True
+
+random_seed: 0
+
+hydra:
+  run:
+    dir: experiments/${now:%Y-%m-%d_%H-%M-%S}_${experiment_name}

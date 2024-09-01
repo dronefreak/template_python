@@ -1,0 +1,14 @@
+experiment_name: inference_onnx
+
+onnx_file_path: null
+
+dataset:
+  _target_: PROJECT_NAME.dataset.ImageClassificationDataset
+  annotations_file: data/labels/labels_test.csv
+  img_dir: data/images
+  labels: ["BELGIUM", "FRANCE"]
+  transform: null
+
+hydra:
+  run:
+    dir: experiments/${now:%Y-%m-%d_%H-%M-%S}_${experiment_name}
