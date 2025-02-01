@@ -31,11 +31,12 @@ class CMakeBuild(build_ext):
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
 
-        subprocess.run("git clone https://github.com/pybind/pybind11.git || true",
-                       cwd=ext.sourcedir,
-                       shell=True,
-                       check=True,
-                       )
+        subprocess.run(
+            "git clone https://github.com/pybind/pybind11.git || true",
+            cwd=ext.sourcedir,
+            shell=True,
+            check=True,
+        )
 
         # Using this requires trailing slash for auto-detection & inclusion of
         # auxiliary "native" libs
@@ -127,7 +128,6 @@ class CMakeBuild(build_ext):
         subprocess.run(
             ["cmake", "--build", ".", *build_args], cwd=build_temp, check=True
         )
-
 
 
 setup(
