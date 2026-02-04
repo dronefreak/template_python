@@ -1,0 +1,111 @@
+name: Auto-populate PR Body
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  populate-body:
+    name: Generate PR Body
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate and update PR body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Fetch the current PR body
+          CURRENT_BODY=$(gh pr view "$PR_NUMBER" --json body -q '.body')
+
+          # Strip HTML comments and whitespace to check for real content
+          STRIPPED=$(echo "$CURRENT_BODY" | sed 's/<!--.*-->//g; s/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d; s/^- *$//')
+          STRIPPED=$(echo "$STRIPPED" | sed '/^## /d')
+          STRIPPED=$(echo "$STRIPPED" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d')
+
+          # Check if it contains only the unfilled template or is empty
+          HAS_CHECKLIST=$(echo "$STRIPPED" | grep -c '\[.\]' || true)
+          NON_CHECKLIST=$(echo "$STRIPPED" | grep -cv '\[.\]' || true)
+
+          if [[ "$NON_CHECKLIST" -gt 0 ]]; then
+            echo "PR body already has custom content. Skipping auto-populate."
+            exit 0
+          fi
+
+          echo "PR body is empty or template-only. Generating content..."
+
+          # --- Collect commit messages ---
+          COMMITS=$(git log --pretty=format:"- %s" "$BASE_SHA".."$HEAD_SHA" 2>/dev/null || \
+                    git log --pretty=format:"- %s" -20)
+
+          # --- Collect changed files with stats ---
+          DIFF_STAT=$(git diff --stat "$BASE_SHA".."$HEAD_SHA" 2>/dev/null || \
+                      git diff --stat HEAD~1)
+
+          FILE_LIST=$(git diff --name-only "$BASE_SHA".."$HEAD_SHA" 2>/dev/null || \
+                      git diff --name-only HEAD~1)
+
+          # --- Categorize changes ---
+          ADDED=$(echo "$FILE_LIST" | grep -c '.' || true)
+          SRC_CHANGES=$(echo "$FILE_LIST" | grep -c '^src/' || true)
+          TEST_CHANGES=$(echo "$FILE_LIST" | grep -c '^tests/' || true)
+          DOC_CHANGES=$(echo "$FILE_LIST" | grep -cE '^(.github/.*\.md|.*README)' || true)
+          CI_CHANGES=$(echo "$FILE_LIST" | grep -cE '^\.github/(workflows|dependabot)' || true)
+
+          # --- Build summary line ---
+          SUMMARY_PARTS=()
+          [[ "$SRC_CHANGES" -gt 0 ]] && SUMMARY_PARTS+=("$SRC_CHANGES source file(s)")
+          [[ "$TEST_CHANGES" -gt 0 ]] && SUMMARY_PARTS+=("$TEST_CHANGES test file(s)")
+          [[ "$DOC_CHANGES" -gt 0 ]] && SUMMARY_PARTS+=("$DOC_CHANGES doc file(s)")
+          [[ "$CI_CHANGES" -gt 0 ]] && SUMMARY_PARTS+=("$CI_CHANGES CI file(s)")
+
+          if [[ ${#SUMMARY_PARTS[@]} -gt 0 ]]; then
+            SUMMARY_LINE="This PR touches $(IFS=', '; echo "${SUMMARY_PARTS[*]}") across $ADDED file(s) total."
+          else
+            SUMMARY_LINE="This PR modifies $ADDED file(s)."
+          fi
+
+          # --- Build the PR body ---
+          BODY=$(cat <<EOF
+          ## Summary
+
+          $SUMMARY_LINE
+
+          ## Changes
+
+          $COMMITS
+
+          <details>
+          <summary>Diff stats</summary>
+
+          \`\`\`
+          $DIFF_STAT
+          \`\`\`
+
+          </details>
+
+          ## Testing
+
+          - [ ] Tests pass locally (\`python -m pytest tests/ -v\`)
+          - [ ] Pre-commit hooks pass (\`pre-commit run --all-files\`)
+
+          ## Related Issues
+
+          <!-- Link any related issues: Fixes #123, Closes #456 -->
+          EOF
+          )
+
+          # Remove leading whitespace from heredoc indentation
+          BODY=$(echo "$BODY" | sed 's/^          //')
+
+          # Update the PR body
+          gh pr edit "$PR_NUMBER" --body "$BODY"
+          echo "PR body has been auto-populated."
