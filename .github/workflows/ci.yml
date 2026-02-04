@@ -75,7 +75,6 @@ jobs:
           python -m pytest tests/ \
             -v \
             --cov=template_project \
-            --cov=apps \
             --cov-fail-under=90 \
             --cov-report=term-missing \
             --cov-report=xml

@@ -16,45 +16,45 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fetch base branch
+        run: git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
+
       - name: Generate and update PR body
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           # Fetch the current PR body
           CURRENT_BODY=$(gh pr view "$PR_NUMBER" --json body -q '.body')
 
-          # Strip HTML comments and whitespace to check for real content
-          STRIPPED=$(echo "$CURRENT_BODY" | sed 's/<!--.*-->//g; s/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d; s/^- *$//')
-          STRIPPED=$(echo "$STRIPPED" | sed '/^## /d')
-          STRIPPED=$(echo "$STRIPPED" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d')
+          # Strip HTML comments, headers, whitespace, checklist items
+          STRIPPED=$(echo "$CURRENT_BODY" \
+            | sed 's/<!--.*-->//g' \
+            | sed '/^## /d' \
+            | sed '/^- \[.\]/d' \
+            | sed '/^-$/d' \
+            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+            | sed '/^$/d')
 
-          # Check if it contains only the unfilled template or is empty
-          HAS_CHECKLIST=$(echo "$STRIPPED" | grep -c '\[.\]' || true)
-          NON_CHECKLIST=$(echo "$STRIPPED" | grep -cv '\[.\]' || true)
-
-          if [[ "$NON_CHECKLIST" -gt 0 ]]; then
+          if [[ -n "$STRIPPED" ]]; then
             echo "PR body already has custom content. Skipping auto-populate."
             exit 0
           fi
 
           echo "PR body is empty or template-only. Generating content..."
 
+          MERGE_BASE=$(git merge-base origin/"$BASE_REF" HEAD)
+
           # --- Collect commit messages ---
-          COMMITS=$(git log --pretty=format:"- %s" "$BASE_SHA".."$HEAD_SHA" 2>/dev/null || \
-                    git log --pretty=format:"- %s" -20)
+          COMMITS=$(git log --pretty=format:"- %s" "$MERGE_BASE"..HEAD)
 
           # --- Collect changed files with stats ---
-          DIFF_STAT=$(git diff --stat "$BASE_SHA".."$HEAD_SHA" 2>/dev/null || \
-                      git diff --stat HEAD~1)
-
-          FILE_LIST=$(git diff --name-only "$BASE_SHA".."$HEAD_SHA" 2>/dev/null || \
-                      git diff --name-only HEAD~1)
+          DIFF_STAT=$(git diff --stat "$MERGE_BASE"..HEAD)
+          FILE_LIST=$(git diff --name-only "$MERGE_BASE"..HEAD)
 
           # --- Categorize changes ---
-          ADDED=$(echo "$FILE_LIST" | grep -c '.' || true)
+          TOTAL=$(echo "$FILE_LIST" | grep -c '.' || true)
           SRC_CHANGES=$(echo "$FILE_LIST" | grep -c '^src/' || true)
           TEST_CHANGES=$(echo "$FILE_LIST" | grep -c '^tests/' || true)
           DOC_CHANGES=$(echo "$FILE_LIST" | grep -cE '^(.github/.*\.md|.*README)' || true)
@@ -68,44 +68,42 @@ jobs:
           [[ "$CI_CHANGES" -gt 0 ]] && SUMMARY_PARTS+=("$CI_CHANGES CI file(s)")
 
           if [[ ${#SUMMARY_PARTS[@]} -gt 0 ]]; then
-            SUMMARY_LINE="This PR touches $(IFS=', '; echo "${SUMMARY_PARTS[*]}") across $ADDED file(s) total."
+            SUMMARY_LINE="This PR touches $(IFS=', '; echo "${SUMMARY_PARTS[*]}") across $TOTAL file(s) total."
           else
-            SUMMARY_LINE="This PR modifies $ADDED file(s)."
+            SUMMARY_LINE="This PR modifies $TOTAL file(s)."
           fi
 
-          # --- Build the PR body ---
-          BODY=$(cat <<EOF
-          ## Summary
+          # --- Write PR body to a temp file ---
+          BODY_FILE=$(mktemp)
+          {
+            echo "## Summary"
+            echo ""
+            echo "$SUMMARY_LINE"
+            echo ""
+            echo "## Changes"
+            echo ""
+            echo "$COMMITS"
+            echo ""
+            echo "<details>"
+            echo "<summary>Diff stats</summary>"
+            echo ""
+            echo '```'
+            echo "$DIFF_STAT"
+            echo '```'
+            echo ""
+            echo "</details>"
+            echo ""
+            echo "## Testing"
+            echo ""
+            echo '- [ ] Tests pass locally (`python -m pytest tests/ -v`)'
+            echo '- [ ] Pre-commit hooks pass (`pre-commit run --all-files`)'
+            echo ""
+            echo "## Related Issues"
+            echo ""
+            echo "<!-- Link any related issues: Fixes #123, Closes #456 -->"
+          } > "$BODY_FILE"
 
-          $SUMMARY_LINE
-
-          ## Changes
-
-          $COMMITS
-
-          <details>
-          <summary>Diff stats</summary>
-
-          \`\`\`
-          $DIFF_STAT
-          \`\`\`
-
-          </details>
-
-          ## Testing
-
-          - [ ] Tests pass locally (\`python -m pytest tests/ -v\`)
-          - [ ] Pre-commit hooks pass (\`pre-commit run --all-files\`)
-
-          ## Related Issues
-
-          <!-- Link any related issues: Fixes #123, Closes #456 -->
-          EOF
-          )
-
-          # Remove leading whitespace from heredoc indentation
-          BODY=$(echo "$BODY" | sed 's/^          //')
-
-          # Update the PR body
-          gh pr edit "$PR_NUMBER" --body "$BODY"
+          # Update the PR body from file
+          gh pr edit "$PR_NUMBER" --body-file "$BODY_FILE"
+          rm -f "$BODY_FILE"
           echo "PR body has been auto-populated."
