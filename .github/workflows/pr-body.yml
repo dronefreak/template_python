@@ -9,10 +9,13 @@ on:
 jobs:
   validate-body:
     name: Validate PR Body
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Check PR body is not empty
         run: |
+          set -euo pipefail
+
           BODY=$(cat <<'BODY_EOF'
           ${{ github.event.pull_request.body }}
           BODY_EOF
@@ -43,6 +46,8 @@ jobs:
 
       - name: Check for placeholder text
         run: |
+          set -euo pipefail
+
           BODY=$(cat <<'BODY_EOF'
           ${{ github.event.pull_request.body }}
           BODY_EOF
